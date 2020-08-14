@@ -35,7 +35,7 @@ const
   (* _LRK_TYPECHECK2 ( RET , TYPE , ARG , TYPE2 , ARG2 ) ( RET ) *)
   { TODO : Unable to convert function-like macro: }
   (* _LRK_TYPECHECK3 ( RET , TYPE , ARG , TYPE2 , ARG2 , TYPE3 , ARG3 ) ( RET ) *)
-  RD_KAFKA_VERSION = $010404ff;
+  RD_KAFKA_VERSION = $010500ff;
   RD_KAFKA_DEBUG_CONTEXTS = 'all,generic,broker,topic,metadata,feature,queue,msg,protocol,cgrp,security,fetch,interceptor,plugin,consumer,admin,eos,mock';
   { TODO : Unable to convert function-like macro: }
   (* RD_KAFKA_V_TOPIC ( topic ) _LRK_TYPECHECK ( RD_KAFKA_VTYPE_TOPIC , const char * , topic ) , ( const char * ) topic *)
@@ -132,6 +132,7 @@ type
   PPrd_kafka_err_desc = ^Prd_kafka_err_desc;
   Prd_kafka_topic_partition_s = ^rd_kafka_topic_partition_s;
   Prd_kafka_topic_partition_list_s = ^rd_kafka_topic_partition_list_s;
+  Prd_kafka_vu_s = ^rd_kafka_vu_s;
   Prd_kafka_message_s = ^rd_kafka_message_s;
   Prd_kafka_metadata_broker = ^rd_kafka_metadata_broker;
   Prd_kafka_metadata_partition = ^rd_kafka_metadata_partition;
@@ -188,6 +189,8 @@ type
   PPrd_kafka_consumer_group_metadata_t = ^Prd_kafka_consumer_group_metadata_t;
   Prd_kafka_error_t = Pointer;
   PPrd_kafka_error_t = ^Prd_kafka_error_t;
+  Prd_kafka_headers_t = Pointer;
+  PPrd_kafka_headers_t = ^Prd_kafka_headers_t;
 
   (**
    * @enum rd_kafka_resp_err_t
@@ -597,8 +600,51 @@ type
     (** (rd_kafka_headers_t * ) Headers list *)
     RD_KAFKA_VTYPE_HEADERS = 10);
   Prd_kafka_vtype_t = ^rd_kafka_vtype_t;
-  Prd_kafka_headers_t = Pointer;
-  PPrd_kafka_headers_t = ^Prd_kafka_headers_t;
+
+  _anonymous_type_1 = record
+    ptr: Pointer;
+    size: NativeUInt;
+  end;
+  P_anonymous_type_1 = ^_anonymous_type_1;
+
+  _anonymous_type_2 = record
+    name: PUTF8Char;
+    val: Pointer;
+    size: ssize_t;
+  end;
+  P_anonymous_type_2 = ^_anonymous_type_2;
+
+  (** Value union, see RD_KAFKA_V_.. macros for which field to use. *)
+  _anonymous_type_3 = record
+    case Integer of
+      0: (cstr: PUTF8Char);
+      1: (rkt: Prd_kafka_topic_t);
+      2: (i: Integer);
+      3: (i32: Int32);
+      4: (i64: Int64);
+      5: (mem: _anonymous_type_1);
+      6: (header: _anonymous_type_2);
+      7: (headers: Prd_kafka_headers_t);
+      8: (ptr: Pointer);
+    (** Padding size for future-proofness *)
+      9: (_pad: array [0..63] of UTF8Char);
+  end;
+  P_anonymous_type_3 = ^_anonymous_type_3;
+
+  (**
+   * @brief VTYPE + argument container for use with rd_kafka_produce_va()
+   *
+   * See RD_KAFKA_V_..() macros below for which union field corresponds
+   * to which RD_KAFKA_VTYPE_...
+   *)
+  rd_kafka_vu_s = record
+    (** RD_KAFKA_VTYPE_.. *)
+    vtype: rd_kafka_vtype_t;
+    u: _anonymous_type_3;
+  end;
+
+  rd_kafka_vu_t = rd_kafka_vu_s;
+  Prd_kafka_vu_t = ^rd_kafka_vu_t;
 
   (**
    * @brief A Kafka message as returned by the \c rd_kafka_consume*() family
@@ -1675,6 +1721,15 @@ procedure rd_kafka_message_destroy(rkmessage: Prd_kafka_message_t); cdecl;
   external LIBRDKAFKA_DLL name _PU + 'rd_kafka_message_destroy';
 
 (**
+ * @brief Returns the error string for an errored rd_kafka_message_t or NULL if
+ *        there was no error.
+ *
+ * @remark This function MUST NOT be used with the producer.
+ *)
+function rd_kafka_message_errstr(const rkmessage: Prd_kafka_message_t): PUTF8Char; cdecl;
+  external LIBRDKAFKA_DLL name _PU + 'rd_kafka_message_errstr';
+
+(**
  * @brief Returns the message timestamp for a consumed message.
  *
  * The timestamp is the number of milliseconds since the epoch (UTC).
@@ -1696,6 +1751,15 @@ function rd_kafka_message_timestamp(const rkmessage: Prd_kafka_message_t; tstype
  *)
 function rd_kafka_message_latency(const rkmessage: Prd_kafka_message_t): Int64; cdecl;
   external LIBRDKAFKA_DLL name _PU + 'rd_kafka_message_latency';
+
+(**
+ * @brief Returns the broker id of the broker the message was produced to
+ *        or fetched from.
+ *
+ * @returns a broker id if known, else -1.
+ *)
+function rd_kafka_message_broker_id(const rkmessage: Prd_kafka_message_t): Int32; cdecl;
+  external LIBRDKAFKA_DLL name _PU + 'rd_kafka_message_broker_id';
 
 (**
  * @brief Get the message header list.
@@ -3397,6 +3461,16 @@ function rd_kafka_offsets_store(rk: Prd_kafka_t; offsets: Prd_kafka_topic_partit
  *         and then start fetching messages. This cycle may take up to
  *         \c session.timeout.ms * 2 or more to complete.
  *
+ * @remark A consumer error will be raised for each unavailable topic in the
+ *         \p topics. The error will be RD_KAFKA_RESP_ERR_UNKNOWN_TOPIC_OR_PART
+ *         for non-existent topics, and
+ *         RD_KAFKA_RESP_ERR_TOPIC_AUTHORIZATION_FAILED for unauthorized topics.
+ *         The consumer error will be raised through rd_kafka_consumer_poll()
+ *         (et.al.) with the \c rd_kafka_message_t.err field set to one of the
+ *         error codes mentioned above.
+ *         The subscribe function itself is asynchronous and will not return
+ *         an error on unavailable topics.
+ *
  * @returns RD_KAFKA_RESP_ERR_NO_ERROR on success or
  *          RD_KAFKA_RESP_ERR__INVALID_ARG if list is empty, contains invalid
  *          topics or regexes,
@@ -3732,7 +3806,12 @@ function rd_kafka_consumer_group_metadata_read(cgmdp: PPrd_kafka_consumer_group_
  *                               partition, either set manually or by the
  *                               configured partitioner.
  *
- *    .._F_FREE and .._F_COPY are mutually exclusive.
+ *    .._F_FREE and .._F_COPY are mutually exclusive. If neither of these are
+ *    set, the caller must ensure that the memory backing \p payload remains
+ *    valid and is not modified or reused until the delivery callback is
+ *    invoked. Other buffers passed to `rd_kafka_produce()` don't have this
+ *    restriction on reuse, i.e. the memory backing the key or the topic name
+ *    may be reused as soon as `rd_kafka_produce()` returns.
  *
  *    If the function returns -1 and RD_KAFKA_MSG_F_FREE was specified, then
  *    the memory associated with the payload is still the caller's
@@ -3789,10 +3868,24 @@ function rd_kafka_produce(rkt: Prd_kafka_topic_t; partition: Int32; msgflags: In
  *          \c RD_KAFKA_RESP_ERR__CONFLICT is returned if _V_HEADER and
  *          _V_HEADERS are mixed.
  *
- * @sa rd_kafka_produce, RD_KAFKA_V_END
+ * @sa rd_kafka_produce, rd_kafka_produceva, RD_KAFKA_V_END
  *)
 function rd_kafka_producev(rk: Prd_kafka_t): rd_kafka_resp_err_t varargs; cdecl;
   external LIBRDKAFKA_DLL name _PU + 'rd_kafka_producev';
+
+(**
+ * @brief Produce and send a single message to broker.
+ *
+ * The message is defined by an array of \c rd_kafka_vu_t of
+ * count \p cnt.
+ *
+ * @returns an error object on failure or NULL on success.
+ *          See rd_kafka_producev() for specific error codes.
+ *
+ * @sa rd_kafka_produce, rd_kafka_producev, RD_KAFKA_V_END
+ *)
+function rd_kafka_produceva(rk: Prd_kafka_t; const vus: Prd_kafka_vu_t; cnt: NativeUInt): Prd_kafka_error_t; cdecl;
+  external LIBRDKAFKA_DLL name _PU + 'rd_kafka_produceva';
 
 (**
  * @brief Produce multiple messages.
@@ -3895,9 +3988,13 @@ function rd_kafka_purge(rk: Prd_kafka_t; purge_flags: Integer): rd_kafka_resp_er
  *                   with rd_kafka_metadata_destroy().
  *  - \p timeout_ms  maximum response time before failing.
  *
- * Returns RD_KAFKA_RESP_ERR_NO_ERROR on success (in which case *metadatap)
- * will be set, else RD_KAFKA_RESP_ERR__TIMED_OUT on timeout or
- * other error code on error.
+ * @remark Consumer: If \p all_topics is non-zero the Metadata response
+ *         information may trigger a re-join if any subscribed topics
+ *         have changed partition count or existence state.
+ *
+ * @returns RD_KAFKA_RESP_ERR_NO_ERROR on success (in which case *metadatap)
+ *          will be set, else RD_KAFKA_RESP_ERR__TIMED_OUT on timeout or
+ *          other error code on error.
  *)
 function rd_kafka_metadata(rk: Prd_kafka_t; all_topics: Integer; only_rkt: Prd_kafka_topic_t; metadatap: PPrd_kafka_metadata; timeout_ms: Integer): rd_kafka_resp_err_t; cdecl;
   external LIBRDKAFKA_DLL name _PU + 'rd_kafka_metadata';
@@ -4237,6 +4334,20 @@ function rd_kafka_event_opaque(rkev: Prd_kafka_event_t): Pointer; cdecl;
  *)
 function rd_kafka_event_log(rkev: Prd_kafka_event_t; fac: PPUTF8Char; str: PPUTF8Char; level: PInteger): Integer; cdecl;
   external LIBRDKAFKA_DLL name _PU + 'rd_kafka_event_log';
+
+(**
+ * @brief Extract log debug context from event.
+ *
+ * Event types:
+ *  - RD_KAFKA_EVENT_LOG
+ *
+ *  @param rkev the event to extract data from.
+ *  @param dst destination string for comma separated list.
+ *  @param dstsize size of provided dst buffer.
+ *  @returns 0 on success or -1 if unsupported event type.
+ *)
+function rd_kafka_event_debug_contexts(rkev: Prd_kafka_event_t; dst: PUTF8Char; dstsize: NativeUInt): Integer; cdecl;
+  external LIBRDKAFKA_DLL name _PU + 'rd_kafka_event_debug_contexts';
 
 (**
  * @brief Extract stats from the event.
@@ -5284,7 +5395,7 @@ function rd_kafka_oauthbearer_set_token_failure(rk: Prd_kafka_t; const errstr: P
  * transactional messages issued by this producer instance.
  *
  * Upon successful return from this function the application has to perform at
- * least one of the following operations within \c transactional.timeout.ms to
+ * least one of the following operations within \c transaction.timeout.ms to
  * avoid timing out the transaction on the broker:
  *   * rd_kafka_produce() (et.al)
  *   * rd_kafka_send_offsets_to_transaction()
