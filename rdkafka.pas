@@ -35,7 +35,7 @@ const
   (* _LRK_TYPECHECK2 ( RET , TYPE , ARG , TYPE2 , ARG2 ) ( RET ) *)
   { TODO : Unable to convert function-like macro: }
   (* _LRK_TYPECHECK3 ( RET , TYPE , ARG , TYPE2 , ARG2 , TYPE3 , ARG3 ) ( RET ) *)
-  RD_KAFKA_VERSION = $010404ff;
+  RD_KAFKA_VERSION_ = $010404ff;
   RD_KAFKA_DEBUG_CONTEXTS = 'all,generic,broker,topic,metadata,feature,queue,msg,protocol,cgrp,security,fetch,interceptor,plugin,consumer,admin,eos,mock';
   { TODO : Unable to convert function-like macro: }
   (* RD_KAFKA_V_TOPIC ( topic ) _LRK_TYPECHECK ( RD_KAFKA_VTYPE_TOPIC , const char * , topic ) , ( const char * ) topic *)
@@ -58,8 +58,8 @@ const
   { TODO : Unable to convert function-like macro: }
   (* RD_KAFKA_V_HEADERS ( HDRS ) _LRK_TYPECHECK ( RD_KAFKA_VTYPE_HEADERS , rd_kafka_headers_t * , HDRS ) , ( rd_kafka_headers_t * ) HDRS *)
   RD_KAFKA_DESTROY_F_NO_CONSUMER_CLOSE = $8;
-  { TODO : Macro probably uses invalid symbol "int32_t": }
-  (* RD_KAFKA_PARTITION_UA ( ( int32_t ) - 1 ) *)
+  { TODO : Macro probably use invalid symbol "int32_t": }
+  RD_KAFKA_PARTITION_UA = UInt32(-1);
   RD_KAFKA_OFFSET_BEGINNING = -2;
   RD_KAFKA_OFFSET_END = -1;
   RD_KAFKA_OFFSET_STORED = -1000;
@@ -77,16 +77,16 @@ const
   RD_KAFKA_EVENT_NONE = $0;
   RD_KAFKA_EVENT_DR = $1;
   RD_KAFKA_EVENT_FETCH = $2;
-  RD_KAFKA_EVENT_LOG = $4;
-  RD_KAFKA_EVENT_ERROR = $8;
+  RD_KAFKA_EVENT_LOG_ = $4;
+  RD_KAFKA_EVENT_ERROR_ = $8;
   RD_KAFKA_EVENT_REBALANCE = $10;
   RD_KAFKA_EVENT_OFFSET_COMMIT = $20;
-  RD_KAFKA_EVENT_STATS = $40;
-  RD_KAFKA_EVENT_CREATETOPICS_RESULT = 100;
-  RD_KAFKA_EVENT_DELETETOPICS_RESULT = 101;
-  RD_KAFKA_EVENT_CREATEPARTITIONS_RESULT = 102;
-  RD_KAFKA_EVENT_ALTERCONFIGS_RESULT = 103;
-  RD_KAFKA_EVENT_DESCRIBECONFIGS_RESULT = 104;
+  RD_KAFKA_EVENT_STATS_ = $40;
+  RD_KAFKA_EVENT_CREATETOPICS_RESULT_ = 100;
+  RD_KAFKA_EVENT_DELETETOPICS_RESULT_ = 101;
+  RD_KAFKA_EVENT_CREATEPARTITIONS_RESULT_ = 102;
+  RD_KAFKA_EVENT_ALTERCONFIGS_RESULT_ = 103;
+  RD_KAFKA_EVENT_DESCRIBECONFIGS_RESULT_ = 104;
   RD_KAFKA_EVENT_OAUTHBEARER_TOKEN_REFRESH = $100;
 
 type
@@ -136,7 +136,7 @@ type
   Prd_kafka_metadata_broker = ^rd_kafka_metadata_broker;
   Prd_kafka_metadata_partition = ^rd_kafka_metadata_partition;
   Prd_kafka_metadata_topic = ^rd_kafka_metadata_topic;
-  Prd_kafka_metadata = ^rd_kafka_metadata;
+  Prd_kafka_metadata = ^rd_kafka_metadata_;
   PPrd_kafka_metadata = ^Prd_kafka_metadata;
   Prd_kafka_group_member_info = ^rd_kafka_group_member_info;
   Prd_kafka_group_info = ^rd_kafka_group_info;
@@ -554,7 +554,7 @@ type
     (** Current allocated size *)
     size: Integer;
     (** Element array[] *)
-    elems: Prd_kafka_topic_partition_t;
+    elems: array of rd_kafka_topic_partition_t;
   end;
 
   rd_kafka_topic_partition_list_t = rd_kafka_topic_partition_list_s;
@@ -751,11 +751,11 @@ type
     (** Number of brokers in \p replicas *)
     replica_cnt: Integer;
     (** Replica brokers *)
-    replicas: PInt32;
+    replicas: array of Int32;
     (** Number of ISR brokers in \p isrs *)
     isr_cnt: Integer;
     (** In-Sync-Replica brokers *)
-    isrs: PInt32;
+    isrs: array of Int32;
   end;
 
   rd_kafka_metadata_partition_t = rd_kafka_metadata_partition;
@@ -769,7 +769,7 @@ type
     (** Number of partitions in \p partitions*)
     partition_cnt: Integer;
     (** Partitions *)
-    partitions: Prd_kafka_metadata_partition;
+    partitions: array of rd_kafka_metadata_partition;
     (** Topic error reported by broker *)
     err: rd_kafka_resp_err_t;
   end;
@@ -779,22 +779,22 @@ type
   (**
    * @brief Metadata container
    *)
-  rd_kafka_metadata = record
+  rd_kafka_metadata_ = record
     (** Number of brokers in \p brokers *)
     broker_cnt: Integer;
     (** Brokers *)
-    brokers: Prd_kafka_metadata_broker;
+    brokers: array of rd_kafka_metadata_broker;
     (** Number of topics in \p topics *)
     topic_cnt: Integer;
     (** Topics *)
-    topics: Prd_kafka_metadata_topic;
+    topics: array of rd_kafka_metadata_topic;
     (** Broker originating this metadata *)
     orig_broker_id: Int32;
     (** Name of originating broker *)
     orig_broker_name: PUTF8Char;
   end;
 
-  rd_kafka_metadata_t = rd_kafka_metadata;
+  rd_kafka_metadata_t = rd_kafka_metadata_;
 
   (**
    * @brief Group member information
@@ -839,7 +839,7 @@ type
     (** Group protocol *)
     protocol: PUTF8Char;
     (** Group members *)
-    members: Prd_kafka_group_member_info;
+    members: array of rd_kafka_group_member_info;
     (** Group member count *)
     member_cnt: Integer;
   end;
@@ -851,7 +851,7 @@ type
    *)
   rd_kafka_group_list = record
     (** Groups *)
-    groups: Prd_kafka_group_info;
+    groups: array of rd_kafka_group_info;
     (** Group count *)
     group_cnt: Integer;
   end;
